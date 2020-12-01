@@ -9,6 +9,7 @@
 #include "GameFramework/PlayerState.h"
 #include "Camera/CameraComponent.h"
 #include "Engine/NetDriver.h"
+#include "Net\UnrealNetwork.h"
 
 AFGPlayer::AFGPlayer()
 {
@@ -17,8 +18,11 @@ AFGPlayer::AFGPlayer()
 	CollisionComponent = CreateDefaultSubobject<USphereComponent>(TEXT("CollisionComponent"));
 	RootComponent = CollisionComponent;
 
+	MeshOffsetRoot = CreateDefaultSubobject<USceneComponent>(TEXT("MeshOffset"));
+	MeshOffsetRoot->SetupAttachment(CollisionComponent);
+
 	MeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("MeshComponent"));
-	MeshComponent->SetupAttachment(CollisionComponent);
+	MeshComponent->SetupAttachment(MeshOffsetRoot);
 
 	SpringArmComponent = CreateDefaultSubobject<USpringArmComponent>(TEXT("SpringArmComponent"));
 	SpringArmComponent->bInheritYaw = false;
@@ -37,35 +41,80 @@ void AFGPlayer::BeginPlay()
 	Super::BeginPlay();
 
 	MovementComponent->SetUpdatedComponent(CollisionComponent);
+
+	if (HasAuthority())
+	{
+		NetUpdateFrequency = NetFrequency;
+	}
+}
+
+void AFGPlayer::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	DOREPLIFETIME(AFGPlayer, ServerState);
 }
 
 void AFGPlayer::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	if (IsLocallyControlled())
+	if (GetLocalRole() == ROLE_AutonomousProxy || (GetLocalRole() == ROLE_Authority && IsLocallyControlled()))
 	{
-		const float Friction = IsBraking() ? BrakingFriction : DefaultFriction;
-		const float Alpha = FMath::Clamp(FMath::Abs(MovementVelocity / (MaxVelocity * 0.75F)), 0.0F, 1.0F);
-		const float TurnSpeed = FMath::InterpEaseOut(0.0F, TurnSpeedDefault, Alpha, 5.0F);
-		const float MovementDirection = MovementVelocity > 0.0F ? Turn : -Turn;
+		FPlayerMove Move;
+		Move.Forward = Forward;
+		Move.Turn = Turn;
+		Move.DeltaTime = DeltaTime;
+		Move.Time = GetWorld()->TimeSeconds;
 
-		Yaw += (MovementDirection * TurnSpeed) * DeltaTime;
-		FQuat WantedFacingDirection = FQuat(FVector::UpVector, FMath::DegreesToRadians(Yaw));
-		MovementComponent->SetFacingRotation(WantedFacingDirection);
+		LastMove = Move;
+		SimulateMove(LastMove);
+	}
 
-		FFGFrameMovement FrameMovement = MovementComponent->CreateFrameMovement();
+	if (GetLocalRole() == ROLE_AutonomousProxy)	// Player
+	{
+		Server_SendMove(LastMove);	// Simulate Move + Update Server State
+	}
 
-		MovementVelocity += Forward * Acceleration * DeltaTime;
-		MovementVelocity = FMath::Clamp(MovementVelocity, -MaxVelocity, MaxVelocity);
-		MovementVelocity *= FMath::Pow(Friction, DeltaTime);
+	if (GetLocalRole() == ROLE_Authority && IsLocallyControlled())	// Server
+	{
+		UpdateServerState();
+	}
 
-		MovementComponent->ApplyGravity();
-		FrameMovement.AddDelta(GetActorForwardVector() * MovementVelocity * DeltaTime);
-		MovementComponent->Move(FrameMovement);
+	if (GetLocalRole() == ROLE_SimulatedProxy)	// Other Players
+	{
+		TimeSinceLastUpdate += DeltaTime;
 
-		Server_SendLocation(GetActorLocation());
-		Server_SendRotation(GetActorRotation());
+		if (TimeBetweenUpdates < 0.01f || TimeSinceLastUpdate < 0.01f)
+		{
+			return;
+		}
+
+		float Alpha = TimeSinceLastUpdate / TimeBetweenUpdates;
+
+		FVector StartLocation = ClientStartTransform.GetLocation();
+		FVector TargetLocation = ServerState.Transform.GetLocation();
+		FVector NewLocation = FMath::LerpStable(StartLocation, TargetLocation, Alpha);
+		SetActorLocation(NewLocation);
+
+		//FVector StartLocation = ClientStartTransform.GetLocation();
+		//FVector TargetLocation = ServerState.Transform.GetLocation();
+		//float VelocityToDerivative = ClientTimeBetweenLastUpdates * 100; // x100 to convert meter to centimeter
+		//FVector StartDerivative = ClientStartVelocity * VelocityToDerivative;
+		//FVector TargetDerivative = ServerState.VelocityVector * VelocityToDerivative;
+		//FVector NewLocation = FMath::CubicInterp(StartLocation, StartDerivative, TargetLocation, TargetDerivative, Alpha);
+		//SetActorLocation(NewLocation);
+
+		//FVector NewDerivative = FMath::CubicInterpDerivative(StartLocation, StartDerivative, TargetLocation, TargetDerivative, Alpha);
+		//FVector NewVelocity = NewDerivative / VelocityToDerivative;
+		//MovementVelocity = NewVelocity.Size();
+
+		//FVector TargetLocation = ServerState.Transform.GetLocation();
+		//FVector NewLocation = FMath::VInterpTo(GetActorLocation(), ServerState.Transform.GetLocation(), DeltaTime, LocationInterpSpeed);
+		//SetActorLocation(NewLocation);
+
+		FRotator TargetRotation = ServerState.Transform.GetRotation().Rotator();
+		FRotator NewRotation = FMath::RInterpTo(GetActorRotation(), TargetRotation, DeltaTime, RotationInterpSpeed);
+		SetActorRotation(NewRotation);
 	}
 }
 
@@ -90,30 +139,58 @@ int32 AFGPlayer::GetPing() const
 	return 0;
 }
 
-void AFGPlayer::Server_SendLocation_Implementation(const FVector& LocationToSend)
+void AFGPlayer::OnRep_ServerState()
 {
-	Mulitcast_SendLcation(LocationToSend);
-}
-
-void AFGPlayer::Mulitcast_SendLcation_Implementation(const FVector& LocationToSend)
-{
-	if (!IsLocallyControlled())
+	if (GetLocalRole() == ROLE_AutonomousProxy)
 	{
-		SetActorLocation(LocationToSend);
+		SetActorTransform(ServerState.Transform);
+	}
+
+	if (GetLocalRole() == ROLE_SimulatedProxy)
+	{
+		TimeBetweenUpdates = TimeSinceLastUpdate;
+		TimeSinceLastUpdate = 0;
+
+		ClientStartVelocity = MovementComponent->GetFacingDirection() * MovementVelocity;
+		ClientStartTransform = GetActorTransform();
 	}
 }
 
-void AFGPlayer::Server_SendRotation_Implementation(const FRotator& RotationToSend)
+void AFGPlayer::UpdateServerState()
 {
-	Mulitcast_SendRotation(RotationToSend);
+	ServerState.LastMove = LastMove;
+	ServerState.Transform = GetActorTransform();
+	//ServerState.VelocityVector = MovementComponent->GetFacingDirection() * MovementVelocity;
 }
 
-void AFGPlayer::Mulitcast_SendRotation_Implementation(const FRotator& RotationToSend)
+void AFGPlayer::Server_SendMove_Implementation(const FPlayerMove& Move)
 {
-	if (!IsLocallyControlled())
-	{
-		SetActorRotation(RotationToSend);
-	}
+	SimulateMove(Move);
+	UpdateServerState();
+
+	//Mulitcast_SendMove(Move);
+}
+
+void AFGPlayer::SimulateMove(const FPlayerMove& Move)
+{
+	const float Friction = IsBraking() ? BrakingFriction : DefaultFriction;
+	const float Alpha = FMath::Clamp(FMath::Abs(MovementVelocity / (MaxVelocity * 0.75F)), 0.0F, 1.0F);
+	const float TurnSpeed = FMath::InterpEaseOut(0.0F, TurnSpeedDefault, Alpha, 5.0F);
+	const float MovementDirection = MovementVelocity > 0.0F ? Move.Turn : -Move.Turn;
+
+	Yaw += (MovementDirection * TurnSpeed) * Move.DeltaTime;
+	FQuat WantedFacingDirection = FQuat(FVector::UpVector, FMath::DegreesToRadians(Yaw));
+	MovementComponent->SetFacingRotation(WantedFacingDirection);
+
+	FFGFrameMovement FrameMovement = MovementComponent->CreateFrameMovement();
+
+	MovementVelocity += Move.Forward * Acceleration * Move.DeltaTime;
+	MovementVelocity = FMath::Clamp(MovementVelocity, -MaxVelocity, MaxVelocity);
+	MovementVelocity *= FMath::Pow(Friction, Move.DeltaTime);
+
+	MovementComponent->ApplyGravity();
+	FrameMovement.AddDelta(GetActorForwardVector() * MovementVelocity * Move.DeltaTime);
+	MovementComponent->Move(FrameMovement);
 }
 
 void AFGPlayer::Handle_Accelerate(float Value)

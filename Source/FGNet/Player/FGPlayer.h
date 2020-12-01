@@ -9,6 +9,37 @@ class UFGMovementComponent;
 class UStaticMeshComponent;
 class USphereComponent;
 
+USTRUCT()
+struct FPlayerMove
+{
+	GENERATED_USTRUCT_BODY()
+
+	UPROPERTY()
+	float Forward;
+	UPROPERTY()
+	float Turn;
+
+	UPROPERTY()
+	float DeltaTime;
+	UPROPERTY()
+	float Time;
+};
+
+USTRUCT()
+struct FServerState
+{
+	GENERATED_USTRUCT_BODY()
+
+	UPROPERTY()
+	FTransform Transform;
+
+	UPROPERTY()
+	FVector VelocityVector;
+
+	UPROPERTY()
+	FPlayerMove LastMove;
+};
+
 UCLASS()
 class FGNET_API AFGPlayer : public APawn
 {
@@ -46,23 +77,29 @@ public:
 	UFUNCTION(BlueprintPure)
 	int32 GetPing() const;
 
-	UFUNCTION(Server, Unreliable)
-	void Server_SendLocation(const FVector& LocationToSend);
-
-	UFUNCTION(NetMulticast, Unreliable)
-	void Mulitcast_SendLcation(const FVector& LocationToSend);
-
-	UFUNCTION(Server, Unreliable)
-	void Server_SendRotation(const FRotator& RotationToSend);
-
-	UFUNCTION(NetMulticast, Unreliable)
-	void Mulitcast_SendRotation(const FRotator& RotationToSend);
-
 private:
 	void Handle_Accelerate(float Value);
 	void Handle_Turn(float Value);
 	void Handle_BrakePressed();
 	void Handle_BrakeReleased();
+
+	UFUNCTION(Server, Reliable)
+	void Server_SendMove(const FPlayerMove& Move);
+
+	//UFUNCTION(NetMulticast, Unreliable)
+	//void Mulitcast_SendMove(const FRotator& Move);
+
+	UPROPERTY(ReplicatedUsing = OnRep_ServerState)
+	FServerState ServerState;
+
+	UFUNCTION()
+	void OnRep_ServerState();
+
+	UFUNCTION()
+	void UpdateServerState();
+
+	UFUNCTION()
+	void SimulateMove(const FPlayerMove& Move);
 
 	float Forward = 0.0F;
 	float Turn = 0.0F;
@@ -71,6 +108,14 @@ private:
 	float Yaw = 0.0F;
 
 	bool bIsBraking = false;
+
+	UPROPERTY(EditAnywhere)
+	float LocationInterpSpeed = 1.f;
+	UPROPERTY(EditAnywhere)
+	float RotationInterpSpeed = 1.f;
+
+	UPROPERTY(EditAnywhere)
+	float NetFrequency = 5.f;
 
 	UPROPERTY(VisibleDefaultsOnly, Category = Collision)
 	USphereComponent* CollisionComponent;
@@ -86,4 +131,13 @@ private:
 
 	UPROPERTY(VisibleDefaultsOnly, Category = Movement)
 	UFGMovementComponent* MovementComponent;
+
+	UPROPERTY(VisibleDefaultsOnly)
+	USceneComponent* MeshOffsetRoot;
+
+	float TimeSinceLastUpdate;
+	float TimeBetweenUpdates;
+	FVector ClientStartVelocity;
+	FTransform ClientStartTransform;
+	FPlayerMove LastMove;
 };
