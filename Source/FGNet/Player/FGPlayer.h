@@ -47,16 +47,10 @@ public:
 	int32 GetPing() const;
 
 	UFUNCTION(Server, Unreliable)
-	void Server_SendLocation(const FVector& LocationToSend);
+	void Server_SendTransform(const FTransform& TransformToSend);
 
 	UFUNCTION(NetMulticast, Unreliable)
-	void Mulitcast_SendLcation(const FVector& LocationToSend);
-
-	UFUNCTION(Server, Unreliable)
-	void Server_SendRotation(const FRotator& RotationToSend);
-
-	UFUNCTION(NetMulticast, Unreliable)
-	void Mulitcast_SendRotation(const FRotator& RotationToSend);
+	void Mulitcast_SendTransform(const FTransform& TransformToSend);
 
 private:
 	void Handle_Accelerate(float Value);
@@ -86,4 +80,16 @@ private:
 
 	UPROPERTY(VisibleDefaultsOnly, Category = Movement)
 	UFGMovementComponent* MovementComponent;
+
+	UPROPERTY()
+	FVector TargetLocation;
+
+	UPROPERTY()
+	FQuat TargetRotation;
+
+	UPROPERTY()
+	float LocationLerpSpeed = 5.f;
+
+	UPROPERTY()
+	float RotationLerpSpeed = 5.f;
 };

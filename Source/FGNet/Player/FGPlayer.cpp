@@ -64,8 +64,15 @@ void AFGPlayer::Tick(float DeltaTime)
 		FrameMovement.AddDelta(GetActorForwardVector() * MovementVelocity * DeltaTime);
 		MovementComponent->Move(FrameMovement);
 
-		Server_SendLocation(GetActorLocation());
-		Server_SendRotation(GetActorRotation());
+		Server_SendTransform(GetActorTransform());
+	}
+	else
+	{
+		FVector NewLocation = FMath::VInterpTo(GetActorLocation(), TargetLocation, DeltaTime, LocationLerpSpeed);
+		SetActorLocation(NewLocation);
+
+		FRotator NewRotation = FMath::RInterpTo(GetActorRotation(), TargetRotation.Rotator(), DeltaTime, RotationLerpSpeed);
+		SetActorRotation(NewRotation);
 	}
 }
 
@@ -90,29 +97,17 @@ int32 AFGPlayer::GetPing() const
 	return 0;
 }
 
-void AFGPlayer::Server_SendLocation_Implementation(const FVector& LocationToSend)
+void AFGPlayer::Server_SendTransform_Implementation(const FTransform& TransformToSend)
 {
-	Mulitcast_SendLcation(LocationToSend);
+	Mulitcast_SendTransform(TransformToSend);
 }
 
-void AFGPlayer::Mulitcast_SendLcation_Implementation(const FVector& LocationToSend)
+void AFGPlayer::Mulitcast_SendTransform_Implementation(const FTransform& TransformToSend)
 {
 	if (!IsLocallyControlled())
 	{
-		SetActorLocation(LocationToSend);
-	}
-}
-
-void AFGPlayer::Server_SendRotation_Implementation(const FRotator& RotationToSend)
-{
-	Mulitcast_SendRotation(RotationToSend);
-}
-
-void AFGPlayer::Mulitcast_SendRotation_Implementation(const FRotator& RotationToSend)
-{
-	if (!IsLocallyControlled())
-	{
-		SetActorRotation(RotationToSend);
+		TargetLocation = TransformToSend.GetLocation();
+		TargetRotation = TransformToSend.GetRotation();
 	}
 }
 
