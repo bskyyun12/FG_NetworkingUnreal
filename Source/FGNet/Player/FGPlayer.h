@@ -12,6 +12,7 @@ class UPlayerSetting;
 class UDebugWidget;
 class APickup;
 class AFGRocket;
+class UFGRocketComponent;
 
 UCLASS()
 class FGNET_API AFGPlayer : public APawn
@@ -69,7 +70,7 @@ public:
 
 	//
 	void FireRocket();
-	void SpawnRockets();
+	//void SpawnRockets();
 	//
 
 private:
@@ -79,7 +80,7 @@ private:
 	int32 NumRockets = 0;
 
 	FVector GetRocketStartLocation() const;
-	AFGRocket* GetFreeRocket() const;
+	UFGRocketComponent* GetFreeRocket() const;
 	int32 GetNumActiveRockets() const;
 
 	void AddMovementVelocity(float DeltaTime);
@@ -91,22 +92,22 @@ private:
 	void Multicast_SendMovement(const FVector& InClientLocation, float TimeStamp, float ClientForward, float ClientYaw);
 
 	UFUNCTION(Server, Reliable)
-	void Server_FireRocket(AFGRocket* NewRocket, const FVector& RocketStartLocation, const FRotator& RocketFacingRotation);
+	void Server_FireRocket(UFGRocketComponent* NewRocket, const FVector& RocketStartLocation, const FRotator& RocketFacingRotation);
 
 	UFUNCTION(NetMulticast, Reliable)
-	void Multicast_FireRocket(AFGRocket* NewRocket, const FVector& RocketStartLocation, const FRotator& RocketFacingRotation);
+	void Multicast_FireRocket(UFGRocketComponent* NewRocket, const FVector& RocketStartLocation, const FRotator& RocketFacingRotation);
 
 	UFUNCTION(Client, Reliable)
-	void Client_RemoveRocket(AFGRocket* RocketToRemove);
+	void Client_RemoveRocket(UFGRocketComponent* RocketToRemove);
 
 	UFUNCTION(BlueprintCallable)
 	void Cheat_IncreaseRockets(int32 InNumRockets);
 
 	UPROPERTY(Replicated, Transient)
-	TArray<AFGRocket*> RocketInstances;
+	TArray<UFGRocketComponent*> RocketInstances;
 
-	UPROPERTY(EditAnywhere, Category = Weapon)
-	TSubclassOf<AFGRocket> RocketClass;
+	//UPROPERTY(EditAnywhere, Category = Weapon)
+	//TSubclassOf<UFGRocketComponent> RocketClass;
 
 	int32 MaxActiveRockets = 3;
 	
