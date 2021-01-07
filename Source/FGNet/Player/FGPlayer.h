@@ -77,7 +77,12 @@ private:
 
 	//
 	int32 ServerNumRockets = 0;
+
+	UPROPERTY(ReplicatedUsing=OnRep_NumRocketsChanged)
 	int32 NumRockets = 0;
+
+	UFUNCTION()
+	void OnRep_NumRocketsChanged();
 
 	FVector GetRocketStartLocation() const;
 	UFGRocketComponent* GetFreeRocket() const;

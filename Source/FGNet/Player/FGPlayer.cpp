@@ -65,6 +65,7 @@ void AFGPlayer::BeginPlay()
 	}
 
 	//SpawnRockets();
+	BP_OnNumRocketsChanged(NumRockets);
 
 	OriginalMeshOffset = MeshComponent->GetRelativeLocation();
 }
@@ -119,7 +120,7 @@ void AFGPlayer::Tick(float DeltaTime)
 		if (bPerformNetworkSmoothing)
 		{
 			const FVector NewRelativeLocation = FMath::VInterpTo(MeshComponent->GetRelativeLocation(), OriginalMeshOffset, LastCorrectionDelta, 1.75f);
-			SetActorLocation(NewRelativeLocation, false, nullptr, ETeleportType::TeleportPhysics) ;
+			SetActorLocation(NewRelativeLocation, false, nullptr, ETeleportType::TeleportPhysics);
 		}
 
 		//FVector NewLocation = FMath::VInterpTo(GetActorLocation(), ReplicatedLocation, DeltaTime, LocationLerpSpeed);
@@ -251,6 +252,8 @@ void AFGPlayer::HideDebugMenu()
 
 void AFGPlayer::FireRocket()
 {
+	UE_LOG(LogTemp, Warning, TEXT("NumRockets: %i, ServerNumRockets: %i"), NumRockets, ServerNumRockets);
+
 	if (FireCooldownElapsed > 0.0f)
 	{
 		return;
@@ -284,6 +287,7 @@ void AFGPlayer::FireRocket()
 		else
 		{
 			NumRockets--;
+			BP_OnNumRocketsChanged(NumRockets);
 			NewRocket->StartMoving(GetActorForwardVector(), GetRocketStartLocation());
 			Server_FireRocket(NewRocket, GetRocketStartLocation(), GetActorRotation());
 		}
@@ -301,6 +305,7 @@ void AFGPlayer::Server_FireRocket_Implementation(UFGRocketComponent* NewRocket, 
 		const float DeltaYaw = FMath::FindDeltaAngleDegrees(RocketFacingRotation.Yaw, GetActorForwardVector().Rotation().Yaw) * 0.5f;
 		const FRotator NewFacingRotation = RocketFacingRotation + FRotator(0.0f, DeltaYaw, 0.0f);
 		ServerNumRockets--;
+		BP_OnNumRocketsChanged(ServerNumRockets);
 		Multicast_FireRocket(NewRocket, RocketStartLocation, NewFacingRotation);
 	}
 }
@@ -319,6 +324,7 @@ void AFGPlayer::Multicast_FireRocket_Implementation(UFGRocketComponent* NewRocke
 	else
 	{
 		NumRockets--;
+		BP_OnNumRocketsChanged(NumRockets);
 		NewRocket->StartMoving(RocketFacingRotation.Vector(), RocketStartLocation);
 	}
 }
@@ -455,22 +461,40 @@ void AFGPlayer::CreateDebugWidget()
 
 void AFGPlayer::OnPickup(APickup* Pickup)
 {
-	if (IsLocallyControlled())
+	//if (IsLocallyControlled())
+	//{
+	//	Server_OnPickup(Pickup);
+	//}
+
+	if (HasAuthority())
 	{
-		Server_OnPickup(Pickup);
+		ServerNumRockets += Pickup->NumRockets;
+		NumRockets += Pickup->NumRockets;
+		BP_OnNumRocketsChanged(NumRockets);
 	}
+}
+
+void AFGPlayer::OnRep_NumRocketsChanged()
+{
+	BP_OnNumRocketsChanged(NumRockets);
 }
 
 void AFGPlayer::Server_OnPickup_Implementation(APickup* Pickup)
 {
-	ServerNumRockets += Pickup->NumRockets;
-	Client_OnPickupRockets(Pickup->NumRockets);
+	//ServerNumRockets += Pickup->NumRockets;
+
+	//NumRockets += Pickup->NumRockets;
+	//	
+	//Client_OnPickupRockets(NumRockets);
+
+	//BP_OnNumRocketsChanged(NumRockets);
+	
+	//Client_OnPickupRockets(Pickup->NumRockets);
 }
 
 void AFGPlayer::Client_OnPickupRockets_Implementation(int32 PickedUpRockets)
 {
-	NumRockets += PickedUpRockets;
-	BP_OnNumRocketsChanged(NumRockets);
+	//NumRockets += PickedUpRockets;
 }
 
 void AFGPlayer::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -480,4 +504,5 @@ void AFGPlayer::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetim
 	DOREPLIFETIME(AFGPlayer, ReplicatedYaw);
 	DOREPLIFETIME(AFGPlayer, ReplicatedLocation);
 	DOREPLIFETIME(AFGPlayer, RocketInstances);
+	DOREPLIFETIME(AFGPlayer, NumRockets);
 }

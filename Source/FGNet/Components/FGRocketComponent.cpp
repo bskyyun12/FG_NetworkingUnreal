@@ -24,6 +24,8 @@ UFGRocketComponent::UFGRocketComponent()
 		MeshComponent->SetStaticMesh(StaticMeshOb_torus.Object);
 	}
 
+	SetRocketVisibility(false);
+
 	SetIsReplicatedByDefault(true);
 }
 
