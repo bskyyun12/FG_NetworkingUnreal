@@ -19,6 +19,9 @@ private:
 	UPROPERTY(EditAnywhere)
 	float LifeTime = 2.0f;
 
+	UPROPERTY(EditAnywhere)
+	float Damage = 10.0f;
+
 	UPROPERTY(EditAnywhere, Category = VFX)
 	UParticleSystem* Explosion = nullptr;
 

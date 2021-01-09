@@ -66,6 +66,7 @@ void AFGPlayer::BeginPlay()
 
 	//SpawnRockets();
 	BP_OnNumRocketsChanged(NumRockets);
+	BP_OnHealthChanged(Health);
 
 	OriginalMeshOffset = MeshComponent->GetRelativeLocation();
 }
@@ -250,9 +251,38 @@ void AFGPlayer::HideDebugMenu()
 	DebugMenuInstance->BP_OnHideWidget();
 }
 
+void AFGPlayer::TakeSomeDamage(float InDamage)
+{
+	if (HasAuthority())
+	{
+		Health -= InDamage;
+		BP_OnHealthChanged(Health);
+	}
+}
+
+void AFGPlayer::OnRep_HealthChanged()
+{
+	BP_OnHealthChanged(Health);
+}
+
+void AFGPlayer::OnPickup(APickup* Pickup)
+{
+	//if (IsLocallyControlled())
+	//{
+	//	Server_OnPickup(Pickup);
+	//}
+
+	if (HasAuthority())
+	{
+		ServerNumRockets += Pickup->NumRockets;
+		NumRockets += Pickup->NumRockets;
+		BP_OnNumRocketsChanged(NumRockets);
+	}
+}
+
 void AFGPlayer::FireRocket()
 {
-	UE_LOG(LogTemp, Warning, TEXT("NumRockets: %i, ServerNumRockets: %i"), NumRockets, ServerNumRockets);
+	//UE_LOG(LogTemp, Warning, TEXT("NumRockets: %i, ServerNumRockets: %i"), NumRockets, ServerNumRockets);
 
 	if (FireCooldownElapsed > 0.0f)
 	{
@@ -292,6 +322,12 @@ void AFGPlayer::FireRocket()
 			Server_FireRocket(NewRocket, GetRocketStartLocation(), GetActorRotation());
 		}
 	}
+}
+
+void AFGPlayer::OnRep_NumRocketsChanged()
+{
+	BP_OnNumRocketsChanged(NumRockets);
+	UE_LOG(LogTemp, Warning, TEXT("OnRep_NumRocketsChanged NumRockets: %i"), NumRockets);
 }
 
 void AFGPlayer::Server_FireRocket_Implementation(UFGRocketComponent* NewRocket, const FVector& RocketStartLocation, const FRotator& RocketFacingRotation)
@@ -459,26 +495,6 @@ void AFGPlayer::CreateDebugWidget()
 	}
 }
 
-void AFGPlayer::OnPickup(APickup* Pickup)
-{
-	//if (IsLocallyControlled())
-	//{
-	//	Server_OnPickup(Pickup);
-	//}
-
-	if (HasAuthority())
-	{
-		ServerNumRockets += Pickup->NumRockets;
-		NumRockets += Pickup->NumRockets;
-		BP_OnNumRocketsChanged(NumRockets);
-	}
-}
-
-void AFGPlayer::OnRep_NumRocketsChanged()
-{
-	BP_OnNumRocketsChanged(NumRockets);
-}
-
 void AFGPlayer::Server_OnPickup_Implementation(APickup* Pickup)
 {
 	//ServerNumRockets += Pickup->NumRockets;
@@ -488,7 +504,7 @@ void AFGPlayer::Server_OnPickup_Implementation(APickup* Pickup)
 	//Client_OnPickupRockets(NumRockets);
 
 	//BP_OnNumRocketsChanged(NumRockets);
-	
+
 	//Client_OnPickupRockets(Pickup->NumRockets);
 }
 
@@ -505,4 +521,5 @@ void AFGPlayer::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetim
 	DOREPLIFETIME(AFGPlayer, ReplicatedLocation);
 	DOREPLIFETIME(AFGPlayer, RocketInstances);
 	DOREPLIFETIME(AFGPlayer, NumRockets);
+	DOREPLIFETIME(AFGPlayer, Health);
 }

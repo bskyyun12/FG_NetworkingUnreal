@@ -68,14 +68,29 @@ public:
 	UFUNCTION(BlueprintImplementableEvent, Category = Player, meta = (DisplayName = "On Num Rockets Changed"))
 	void BP_OnNumRocketsChanged(int32 NewNumRockets);
 
+
 	//
 	void FireRocket();
 	//void SpawnRockets();
 	//
 
+
+	// Health
+	UPROPERTY(EditAnywhere, ReplicatedUsing=OnRep_HealthChanged)
+	float Health = 100.0f;
+
+	UFUNCTION()
+	void OnRep_HealthChanged();
+
+	void TakeSomeDamage(float InDamage);
+
+	UFUNCTION(BlueprintImplementableEvent, Category = Player, meta = (DisplayName = "On Health Changed"))
+	void BP_OnHealthChanged(float NewHealth);
+	// Health
+
 private:
 
-	//
+	// Rockets
 	int32 ServerNumRockets = 0;
 
 	UPROPERTY(ReplicatedUsing=OnRep_NumRocketsChanged)
@@ -120,7 +135,7 @@ private:
 
 	UPROPERTY(EditAnywhere, Category = Weapon)
 	bool bUnlimitedRockets = false;
-	//
+	// Rockets
 
 	void Handle_Accelerate(float Value);
 	void Handle_Turn(float Value);

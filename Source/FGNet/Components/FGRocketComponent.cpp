@@ -4,6 +4,7 @@
 #include "FGRocketComponent.h"
 #include "DrawDebugHelpers.h"
 #include "Kismet/GameplayStatics.h"
+#include "../Player/FGPlayer.h"
 
 // Sets default values for this component's properties
 UFGRocketComponent::UFGRocketComponent()
@@ -73,6 +74,14 @@ void UFGRocketComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAc
 
 	if (Hit.bBlockingHit)
 	{
+		if (Hit.GetActor() != nullptr)
+		{
+			AFGPlayer* Player = Cast<AFGPlayer>(Hit.GetActor());
+			if (Player != nullptr)
+			{
+				Player->TakeSomeDamage(Damage);
+			}
+		}
 		Explode();
 	}
 
